@@ -1,0 +1,2 @@
+include ':app', ':complier', ':core'
+rootProject.name='CopycatKnife'
