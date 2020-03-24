@@ -8,6 +8,9 @@ import com.zhangke.annotations.OnClick;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+//import com.zhangke.annotations.BindView;
+//import com.zhangke.annotations.OnClick;
+
 public class MainActivity extends AppCompatActivity {
 
     @BindView(R.id.tv_main_01)
