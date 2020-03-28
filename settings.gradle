@@ -1,2 +1,2 @@
-include ':app', ':complier', ':core'
+include ':smaple', ':complier', ':annotations', ':copycatknife'
 rootProject.name='CopycatKnife'

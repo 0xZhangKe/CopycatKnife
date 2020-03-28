@@ -8,6 +8,7 @@ import com.zhangke.annotations.BindView
 import javax.annotation.processing.AbstractProcessor
 import javax.annotation.processing.ProcessingEnvironment
 import javax.annotation.processing.RoundEnvironment
+import javax.lang.model.SourceVersion
 import javax.lang.model.element.*
 
 
@@ -18,6 +19,10 @@ class BindViewProcessor : AbstractProcessor() {
 
     override fun init(processingEnv: ProcessingEnvironment?) {
         super.init(processingEnv)
+    }
+
+    override fun getSupportedSourceVersion(): SourceVersion {
+        return super.getSupportedSourceVersion()
     }
 
     override fun getSupportedAnnotationTypes(): Set<String> {
@@ -32,14 +37,37 @@ class BindViewProcessor : AbstractProcessor() {
 
     private fun parseBindView(roundEnv: RoundEnvironment) {
         val bindViewElementSet = roundEnv.getElementsAnnotatedWith(BindView::class.java)
-        for (element in bindViewElementSet) {
-            checkAnnotationLegal(element)
-            val variableElement = element as VariableElement
-            println("$element----------->enclosingElementas:${element.enclosingElement}, " +
-                    "Type:${element.asType()}, kind:${element.kind}, element type:${element is TypeElement}")
-
-        }
         buildBindClass(bindViewElementSet)
+    }
+
+    private fun buildBindClass(eleSet: Set<Element>) {
+        val groupedElement = groupingElementWithType(eleSet)
+        val keySet = groupedElement.keys
+        for (classItem in keySet) {
+            val typeBuilder = makeTypeSpecBuilder(classItem)
+            val constructorBuilder = makeConstructor(classItem)
+            buildConstructorCode(constructorBuilder, groupedElement[classItem])
+            typeBuilder.addMethod(constructorBuilder.build())
+            val file = JavaFile.builder(getPackageName(classItem), typeBuilder.build())
+                    .build()
+            file.writeTo(this.processingEnv.filer)
+        }
+    }
+
+    private fun groupingElementWithType(eleSet: Set<Element>): Map<TypeElement, ArrayList<Element>> {
+        val groupedElement = HashMap<TypeElement, ArrayList<Element>>()
+        for (item in eleSet) {
+            checkAnnotationLegal(item)
+            val enclosingElement = item.enclosingElement as TypeElement
+            if (groupedElement.keys.contains(enclosingElement)) {
+                groupedElement[enclosingElement]!!.add(item)
+            } else {
+                val list = ArrayList<Element>()
+                list += item
+                groupedElement[enclosingElement] = list
+            }
+        }
+        return groupedElement
     }
 
     private fun checkAnnotationLegal(ele: Element) {
@@ -55,48 +83,16 @@ class BindViewProcessor : AbstractProcessor() {
         }
     }
 
-    private fun buildBindClass(eleSet: Set<Element>) {
-        val groupedElement = groupingElementWithType(eleSet)
-        val keySet = groupedElement.keys
-        for (classItem in keySet) {
-            val typeBuilder = makeTypeSpecBuilder(classItem)
-            val bindMethodBuilder = makeBindMethod(classItem)
-            buildBindViewCode(bindMethodBuilder, groupedElement[classItem])
-            val unbindMethodBuilder = buildUnbindMethod(classItem, groupedElement[classItem])
-            typeBuilder.addMethod(bindMethodBuilder.build())
-            typeBuilder.addMethod(unbindMethodBuilder)
-            val file = JavaFile.builder(getPackageName(classItem), typeBuilder.build())
-                    .build()
-            file.writeTo(this.processingEnv.filer)
-        }
-    }
-
-    private fun groupingElementWithType(eleSet: Set<Element>): Map<TypeElement, ArrayList<Element>> {
-        val groupedElement = HashMap<TypeElement, ArrayList<Element>>()
-        for (item in eleSet) {
-            val enclosingElement = item.enclosingElement as TypeElement
-            if (groupedElement.keys.contains(enclosingElement)) {
-                groupedElement[enclosingElement]!!.add(item)
-            } else {
-                val list = ArrayList<Element>()
-                list += item
-                groupedElement[enclosingElement] = list
-            }
-        }
-        return groupedElement
-    }
-
     private fun makeTypeSpecBuilder(typeEle: TypeElement): TypeSpec.Builder {
-        return TypeSpec.classBuilder("${typeEle.simpleName}_Binding")
+        return TypeSpec.classBuilder("${typeEle.simpleName}_ViewBinding")
                 .addModifiers(Modifier.PUBLIC)
     }
 
-    private fun makeBindMethod(typeElement: TypeElement): MethodSpec.Builder {
+    private fun makeConstructor(typeElement: TypeElement): MethodSpec.Builder {
         val typeMirror = typeElement.asType()
-        return MethodSpec.methodBuilder("bind")
+        return MethodSpec.constructorBuilder()
                 .addModifiers(Modifier.PUBLIC)
                 .addParameter(TypeName.get(typeMirror), "target")
-                .returns(TypeName.VOID)
     }
 
     private fun getPackageName(typeElement: Element): String {
@@ -107,26 +103,12 @@ class BindViewProcessor : AbstractProcessor() {
         return (ele as PackageElement).qualifiedName.toString()
     }
 
-    private fun buildBindViewCode(bindMethodBuilder: MethodSpec.Builder, elements: ArrayList<Element>?) {
+    private fun buildConstructorCode(bindMethodBuilder: MethodSpec.Builder, elements: ArrayList<Element>?) {
         elements?.let {
             for (itemView in elements) {
                 bindMethodBuilder.addStatement("target.${itemView} = " +
                         "target.findViewById(${itemView.getAnnotation(BindView::class.java).value})")
             }
         }
-    }
-
-    private fun buildUnbindMethod(typeElement: TypeElement, elements: ArrayList<Element>?): MethodSpec {
-        val typeMirror = typeElement.asType()
-        val builder = MethodSpec.methodBuilder("unbind")
-                .addParameter(TypeName.get(typeMirror), "target")
-                .addModifiers(Modifier.PUBLIC)
-                .returns(TypeName.VOID)
-        elements?.let {
-            for (itemView in elements) {
-                builder.addStatement("target.${itemView} = null")
-            }
-        }
-        return builder.build()
     }
 }
